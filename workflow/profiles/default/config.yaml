@@ -1,0 +1,6 @@
+cores: 8
+software-deployment-method: conda
+printshellcmds: true
+verbose: true
+rerun-incomplete: true
+keep-going: true
