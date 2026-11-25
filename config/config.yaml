@@ -1,0 +1,8 @@
+# Configuração principal do workflow
+samples: "config/samples.tsv"
+# Parâmetros que podem variar entre execuções
+kraken2_db: "/caminho/para/o/banco/kraken2"
+mlst_scheme: "abaumannii_2"
+# Limites de recursos (podem ser sobrescritos na CLI)
+max_threads: 16
+max_memory_gb: 64
