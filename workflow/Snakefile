@@ -1,0 +1,70 @@
+# =============================================================================
+# workflow/Snakefile
+# Main entry point for the genomic analysis pipeline.
+#
+# This file:
+#   1. Loads the user configuration.
+#   2. Reads the sample sheet.
+#   3. Includes all rule modules from workflow/rules/.
+#   4. Defines the final target rule ('all').
+#
+# Following Snakemake best practices:
+#   - Modular rules in separate .smk files.
+#   - Config-driven behavior.
+#   - No hardcoded paths.
+# =============================================================================
+
+import pandas as pd
+
+# --- Load configuration -----------------------------------------------------
+configfile: "config/config.yaml"
+
+# --- Read sample sheet ------------------------------------------------------
+# The sample sheet is a TSV with columns: sample, fastq_r1, fastq_r2.
+samples_df = pd.read_csv(config["samples"], sep="\t")
+SAMPLES = samples_df["sample"].tolist()
+
+# --- Define output directory ------------------------------------------------
+# All results go under this prefix. Subdirectories are created per tool.
+OUTDIR = config["outdir"]
+
+# --- Include helper functions and rule modules ------------------------------
+include: "rules/common.smk"
+include: "rules/basespace.smk"
+include: "rules/fastqc.smk"
+include: "rules/spades.smk"
+include: "rules/quast.smk"
+include: "rules/checkm.smk"
+include: "rules/prokka.smk"
+include: "rules/mlst.smk"
+include: "rules/rgi.smk"
+include: "rules/kraken2.smk"
+include: "rules/bracken.smk"
+include: "rules/abricate.smk"
+include: "rules/eggnog.smk"
+include: "rules/fastani.smk"
+
+# --- Final target rule ------------------------------------------------------
+# This rule defines what the pipeline should produce when run without a
+# specific target. It collects the final outputs of all major analysis steps.
+# Adjust the list below to match the results you care about.
+rule all:
+    input:
+        # Assembly and QC
+        expand(f"{OUTDIR}/02_fastqc/multiqc_report.html", sample=SAMPLES),
+        expand(f"{OUTDIR}/03_spades/{{sample}}/contigs.fasta", sample=SAMPLES),
+        expand(f"{OUTDIR}/04_quast/report.html", sample=SAMPLES),
+        # Annotation
+        expand(f"{OUTDIR}/06_prokka/{{sample}}/{{sample}}.gff", sample=SAMPLES),
+        # Typing and resistance
+        expand(f"{OUTDIR}/07_mlst/{{sample}}_mlst.tsv", sample=SAMPLES),
+        expand(f"{OUTDIR}/08_rgi/{{sample}}/{{sample}}.txt", sample=SAMPLES),
+        # Taxonomy
+        expand(f"{OUTDIR}/09_kraken2/{{sample}}.kraken.report", sample=SAMPLES),
+        expand(f"{OUTDIR}/10_bracken/{{sample}}.bracken.tsv", sample=SAMPLES),
+        # Virulence
+        expand(f"{OUTDIR}/11_abricate/{{sample}}_abricate.tsv", sample=SAMPLES),
+        # Functional annotation
+        expand(f"{OUTDIR}/12_eggnog/{{sample}}.emapper.annotations", sample=SAMPLES),
+        # Species identification
+        expand(f"{OUTDIR}/13_fastani/{{sample}}_fastani.txt", sample=SAMPLES),
