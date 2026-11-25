@@ -1,56 +1,56 @@
 # =============================================================================
 # workflow/rules/common.smk
-# Helper functions shared across rule modules.
-#
-# Keeping these separate from rules improves readability and avoids
-# duplicating logic.
+# System-aware resource detection.
 # =============================================================================
 
-def get_fastq(wildcards):
+import psutil
+import multiprocessing
+import os
+
+def get_system_resources():
     """
-    Return the list of FASTQ files (R1, R2) for a given sample.
-
-    This is an input function, evaluated during the DAG phase, so it can
-    safely access the sample sheet and wildcard values.
-
-    Args:
-        wildcards: Snakemake wildcards object (has .sample attribute).
-
-    Returns:
-        List of two file paths [R1, R2].
+    Detects available system resources and returns a dictionary.
+    This runs when the Snakefile is parsed, before any job is scheduled.
     """
-    row = samples_df[samples_df["sample"] == wildcards.sample].iloc[0]
-    return [row["fastq_r1"], row["fastq_r2"]]
+    total_mem_gb = psutil.virtual_memory().total / (1024**3)
+    total_cores = multiprocessing.cpu_count()
+    
+    # Check if running on a shared server (heuristic: hostname or env var)
+    # You can customize this logic. For example, check for a specific env var
+    # that is set on your HPC login node.
+    is_shared = os.environ.get("HPC_ENVIRONMENT", "false").lower() == "true"
+    
+    if is_shared:
+        # Conservative settings for shared servers to avoid crashing
+        # Use only a fraction of the resources, leaving headroom for others.
+        usable_cores = max(1, total_cores // 4)
+        usable_mem_gb = max(1, int(total_mem_gb // 2))
+    else:
+        # For a local workstation, use most of the available resources.
+        usable_cores = max(1, total_cores - 1)  # Leave one core for the OS
+        usable_mem_gb = max(1, int(total_mem_gb * 0.8))
+        
+    return {
+        "cores": usable_cores,
+        "mem_gb": usable_mem_gb,
+        "total_cores": total_cores,
+        "total_mem_gb": total_mem_gb,
+        "is_shared": is_shared
+    }
 
+# Detect resources once at startup
+SYSTEM_RESOURCES = get_system_resources()
 
-def get_contigs(wildcards):
-    """
-    Return the path to the assembled contigs file for a given sample.
+# Now you can use these values as defaults in your rules or config.
+# For example, override the config defaults if not explicitly set.
+config.setdefault("max_threads", SYSTEM_RESOURCES["cores"])
+config.setdefault("max_memory_gb", SYSTEM_RESOURCES["mem_gb"])
 
-    Useful for rules that take contigs as input (e.g., Prokka, MLST, RGI).
-    """
-    return f"{OUTDIR}/03_spades/{wildcards.sample}/contigs.fasta"
-
-
-def get_prokka_gff(wildcards):
-    """
-    Return the path to the Prokka GFF file for a given sample.
-    """
-    return f"{OUTDIR}/06_prokka/{wildcards.sample}/{wildcards.sample}.gff"
-
-
-def get_kraken2_report(wildcards):
-    """
-    Return the path to the Kraken2 report for a given sample.
-    """
-    return f"{OUTDIR}/09_kraken2/{wildcards.sample}.kraken.report"
-
-
-def get_threads(default=1):
-    """
-    Return the number of threads for a rule, capped by the global maximum.
-
-    Reads the 'max_threads' value from the config if present, otherwise
-    returns the provided default.
-    """
-    return min(default, config.get("max_threads", default))
+# You can also print a summary for the user to see.
+print(f"--- System Resource Detection ---")
+print(f"Detected {SYSTEM_RESOURCES['total_cores']} CPU cores, "
+      f"{SYSTEM_RESOURCES['total_mem_gb']:.1f} GB RAM.")
+print(f"Mode: {'Shared Server (Conservative)' if SYSTEM_RESOURCES['is_shared'] else 'Local Workstation'}")
+print(f"Using up to {SYSTEM_RESOURCES['cores']} cores and "
+      f"{SYSTEM_RESOURCES['mem_gb']} GB RAM for the workflow.")
+print(f"---------------------------------")
