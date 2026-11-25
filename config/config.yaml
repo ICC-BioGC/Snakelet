@@ -1,8 +1,27 @@
-# Configuração principal do workflow
+# =============================================================================
+# config/config.yaml
+# Main configuration for the genomic analysis pipeline.
+# Values here can be overridden via CLI (e.g., --config key=value).
+# =============================================================================
+
+# --- Sample sheet -----------------------------------------------------------
+# Path to the TSV file listing samples and their raw FASTQ files.
 samples: "config/samples.tsv"
-# Parâmetros que podem variar entre execuções
-kraken2_db: "/caminho/para/o/banco/kraken2"
+
+# --- Tool-specific parameters -----------------------------------------------
+# Kraken2/Bracken database directory.
+kraken2_db: "/path/to/kraken2/database"
+
+# MLST scheme to use (e.g., "abaumannii_2", "ecoli", etc.).
 mlst_scheme: "abaumannii_2"
-# Limites de recursos (podem ser sobrescritos na CLI)
-max_threads: 16
-max_memory_gb: 64
+
+# RGI database type (e.g., "card", "ncbi", "resfinder").
+rgi_db: "card"
+
+# Reference genomes directory for fastANI.
+fastani_ref_dir: "resources/references"
+
+# --- Output directory -------------------------------------------------------
+# Base directory where all results will be stored.
+# Snakemake will create subdirectories per tool inside this.
+outdir: "results"
