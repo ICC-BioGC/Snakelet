@@ -1,39 +1,28 @@
 # =============================================================================
 # workflow/Snakefile
-# Main entry point for the genomic analysis pipeline.
+# Main entry point for the Snakelet pipeline.
 #
-# This file:
-#   1. Loads the user configuration.
-#   2. Reads the sample sheet.
-#   3. Includes all rule modules from workflow/rules/.
-#   4. Defines the final target rule ('all').
-#
-# Following Snakemake best practices:
-#   - Modular rules in separate .smk files.
-#   - Config-driven behavior.
-#   - No hardcoded paths.
+# This version uses a checkpoint to dynamically discover samples after the
+# BaseSpace download step, eliminating the need for a manual samples.tsv.
 # =============================================================================
 
-import pandas as pd
+import os
+from snakemake.io import glob_wildcards
 
 # --- Load configuration -----------------------------------------------------
 configfile: "config/config.yaml"
 
-# --- Read sample sheet ------------------------------------------------------
-# The sample sheet is a TSV with columns: sample, fastq_r1, fastq_r2.
-samples_df = pd.read_csv(config["samples"], sep="\t")
-SAMPLES = samples_df["sample"].tolist()
-
 # --- Define output directory ------------------------------------------------
-# All results go under this prefix. Subdirectories are created per tool.
 OUTDIR = config["outdir"]
 
 # --- Include helper functions and rule modules ------------------------------
 include: "rules/common.smk"
 include: "rules/basespace.smk"
 include: "rules/fastqc.smk"
+include: "rules/fastp.smk"
 include: "rules/spades.smk"
 include: "rules/quast.smk"
+include: "rules/busco.smk"
 include: "rules/checkm.smk"
 include: "rules/prokka.smk"
 include: "rules/mlst.smk"
@@ -41,30 +30,41 @@ include: "rules/rgi.smk"
 include: "rules/kraken2.smk"
 include: "rules/bracken.smk"
 include: "rules/abricate.smk"
+include: "rules/mob_suite.smk"
 include: "rules/eggnog.smk"
 include: "rules/fastani.smk"
 
-# --- Final target rule ------------------------------------------------------
-# This rule defines what the pipeline should produce when run without a
-# specific target. It collects the final outputs of all major analysis steps.
-# Adjust the list below to match the results you care about.
+# --- Function to discover samples after the BaseSpace checkpoint ------------
+def get_samples_from_download(wildcards):
+    """
+    Read the output directory of the basespace_download checkpoint
+    and extract sample names from the FASTQ files found there.
+
+    This function is evaluated *after* the checkpoint completes.
+    """
+    # Wait for the checkpoint to finish and get its output directory
+    checkpoint_dir = checkpoints.basespace_download.get(**wildcards).output[0]
+
+    # Glob for FASTQ files inside the checkpoint output directory.
+    # Adjust the pattern if the downloaded structure differs.
+    # Example structure: results/01_basespace/{sample}/*.fastq.gz
+    fastq_files = glob_wildcards(os.path.join(checkpoint_dir, "{sample}_R1.fastq.gz")).sample
+
+    # Return the unique list of sample names
+    return list(set(fastq_files))
+
+
+# --- Dynamic target rule ----------------------------------------------------
+# The inputs of 'rule all' are determined at runtime, after the checkpoint.
 rule all:
     input:
-        # Assembly and QC
-        expand(f"{OUTDIR}/02_fastqc/multiqc_report.html", sample=SAMPLES),
-        expand(f"{OUTDIR}/03_spades/{{sample}}/contigs.fasta", sample=SAMPLES),
-        expand(f"{OUTDIR}/04_quast/report.html", sample=SAMPLES),
-        # Annotation
-        expand(f"{OUTDIR}/06_prokka/{{sample}}/{{sample}}.gff", sample=SAMPLES),
-        # Typing and resistance
-        expand(f"{OUTDIR}/07_mlst/{{sample}}_mlst.tsv", sample=SAMPLES),
-        expand(f"{OUTDIR}/08_rgi/{{sample}}/{{sample}}.txt", sample=SAMPLES),
-        # Taxonomy
-        expand(f"{OUTDIR}/09_kraken2/{{sample}}.kraken.report", sample=SAMPLES),
-        expand(f"{OUTDIR}/10_bracken/{{sample}}.bracken.tsv", sample=SAMPLES),
-        # Virulence
-        expand(f"{OUTDIR}/11_abricate/{{sample}}_abricate.tsv", sample=SAMPLES),
-        # Functional annotation
-        expand(f"{OUTDIR}/12_eggnog/{{sample}}.emapper.annotations", sample=SAMPLES),
-        # Species identification
-        expand(f"{OUTDIR}/13_fastani/{{sample}}_fastani.txt", sample=SAMPLES),
+        # The checkpoint itself must be an input to trigger its execution
+        # before the dynamic discovery happens.
+        # (Alternatively, we can just let Snakemake discover it through the
+        #  dependencies of the downstream rules, but making it explicit here
+        #  clarifies the intent.)
+        # Then, use the discovered samples to build the final target list.
+        lambda wildcards: expand(
+            f"{OUTDIR}/06_prokka/{{sample}}/{{sample}}.gff",
+            sample=get_samples_from_download(wildcards)
+        )
