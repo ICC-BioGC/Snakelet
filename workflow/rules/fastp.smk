@@ -1,6 +1,5 @@
 # workflow/rules/fastp.smk
 # Quality control and trimming using fastp.
-# This is one of two alternatives for the QC step (the other is FastQC).
 
 rule fastp_pe:
     input:
