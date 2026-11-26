@@ -1,56 +1,48 @@
-# =============================================================================
 # workflow/rules/common.smk
-# System-aware resource detection.
-# =============================================================================
 
-import psutil
-import multiprocessing
-import os
-
-def get_system_resources():
+def get_qc_fastq_input(wildcards):
     """
-    Detects available system resources and returns a dictionary.
-    This runs when the Snakefile is parsed, before any job is scheduled.
+    Return the FASTQ files to be used by FastQC.
+    - Mode "full" or "fastp": use fastp-trimmed reads.
+    - Mode "fastqc": use raw reads.
     """
-    total_mem_gb = psutil.virtual_memory().total / (1024**3)
-    total_cores = multiprocessing.cpu_count()
-    
-    # Check if running on a shared server (heuristic: hostname or env var)
-    # You can customize this logic. For example, check for a specific env var
-    # that is set on your HPC login node.
-    is_shared = os.environ.get("HPC_ENVIRONMENT", "false").lower() == "true"
-    
-    if is_shared:
-        # Conservative settings for shared servers to avoid crashing
-        # Use only a fraction of the resources, leaving headroom for others.
-        usable_cores = max(1, total_cores // 4)
-        usable_mem_gb = max(1, int(total_mem_gb // 2))
+    mode = config["qc"]["mode"]
+    if mode in ("full", "fastp"):
+        return [
+            f"{get_step_dir('fastp')}/{wildcards.sample}_R1.fastq.gz",
+            f"{get_step_dir('fastp')}/{wildcards.sample}_R2.fastq.gz",
+        ]
+    elif mode == "fastqc":
+        return get_fastq(wildcards)
     else:
-        # For a local workstation, use most of the available resources.
-        usable_cores = max(1, total_cores - 1)  # Leave one core for the OS
-        usable_mem_gb = max(1, int(total_mem_gb * 0.8))
-        
-    return {
-        "cores": usable_cores,
-        "mem_gb": usable_mem_gb,
-        "total_cores": total_cores,
-        "total_mem_gb": total_mem_gb,
-        "is_shared": is_shared
-    }
+        raise ValueError(f"Unknown qc.mode: {mode}")
 
-# Detect resources once at startup
-SYSTEM_RESOURCES = get_system_resources()
 
-# Now you can use these values as defaults in your rules or config.
-# For example, override the config defaults if not explicitly set.
-config.setdefault("max_threads", SYSTEM_RESOURCES["cores"])
-config.setdefault("max_memory_gb", SYSTEM_RESOURCES["mem_gb"])
+def get_multiqc_dirs():
+    """
+    Return the list of directories that MultiQC should scan.
+    Depends on which QC tools were run.
+    """
+    mode = config["qc"]["mode"]
+    dirs = []
+    if mode in ("full", "fastp"):
+        dirs.append(get_step_dir("fastp"))
+    if mode in ("full", "fastqc"):
+        dirs.append(get_step_dir("fastqc"))
+    return dirs
 
-# You can also print a summary for the user to see.
-print(f"--- System Resource Detection ---")
-print(f"Detected {SYSTEM_RESOURCES['total_cores']} CPU cores, "
-      f"{SYSTEM_RESOURCES['total_mem_gb']:.1f} GB RAM.")
-print(f"Mode: {'Shared Server (Conservative)' if SYSTEM_RESOURCES['is_shared'] else 'Local Workstation'}")
-print(f"Using up to {SYSTEM_RESOURCES['cores']} cores and "
-      f"{SYSTEM_RESOURCES['mem_gb']} GB RAM for the workflow.")
-print(f"---------------------------------")
+
+def get_multiqc_input(wildcards):
+    """
+    Return the QC report files that MultiQC depends on.
+    This ensures fastp and/or FastQC run before MultiQC.
+    """
+    mode = config["qc"]["mode"]
+    inputs = []
+    if mode in ("full", "fastp"):
+        inputs.extend(expand(f"{get_step_dir('fastp')}/{{sample}}.html", sample=SAMPLES))
+        inputs.extend(expand(f"{get_step_dir('fastp')}/{{sample}}.json", sample=SAMPLES))
+    if mode in ("full", "fastqc"):
+        inputs.extend(expand(f"{get_step_dir('fastqc')}/{{sample}}_fastqc.html", sample=SAMPLES))
+        inputs.extend(expand(f"{get_step_dir('fastqc')}/{{sample}}_fastqc.zip", sample=SAMPLES))
+    return inputs
