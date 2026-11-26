@@ -1,48 +1,34 @@
 # workflow/rules/common.smk
+import glob
+import os
 
-def get_qc_fastq_input(wildcards):
+def discover_samples_from_dir(wildcards=None):
     """
-    Return the FASTQ files to be used by FastQC.
-    - Mode "full" or "fastp": use fastp-trimmed reads.
-    - Mode "fastqc": use raw reads.
+    Recursively search the configured input directory for FASTQ files
+    and extract sample names from them.
+    
+    The input directory is read from config["input_fastq_dir"].
+    This function is evaluated at DAG-building time.
     """
-    mode = config["qc"]["mode"]
-    if mode in ("full", "fastp"):
-        return [
-            f"{get_step_dir('fastp')}/{wildcards.sample}_R1.fastq.gz",
-            f"{get_step_dir('fastp')}/{wildcards.sample}_R2.fastq.gz",
-        ]
-    elif mode == "fastqc":
-        return get_fastq(wildcards)
-    else:
-        raise ValueError(f"Unknown qc.mode: {mode}")
-
-
-def get_multiqc_dirs():
-    """
-    Return the list of directories that MultiQC should scan.
-    Depends on which QC tools were run.
-    """
-    mode = config["qc"]["mode"]
-    dirs = []
-    if mode in ("full", "fastp"):
-        dirs.append(get_step_dir("fastp"))
-    if mode in ("full", "fastqc"):
-        dirs.append(get_step_dir("fastqc"))
-    return dirs
-
-
-def get_multiqc_input(wildcards):
-    """
-    Return the QC report files that MultiQC depends on.
-    This ensures fastp and/or FastQC run before MultiQC.
-    """
-    mode = config["qc"]["mode"]
-    inputs = []
-    if mode in ("full", "fastp"):
-        inputs.extend(expand(f"{get_step_dir('fastp')}/{{sample}}.html", sample=SAMPLES))
-        inputs.extend(expand(f"{get_step_dir('fastp')}/{{sample}}.json", sample=SAMPLES))
-    if mode in ("full", "fastqc"):
-        inputs.extend(expand(f"{get_step_dir('fastqc')}/{{sample}}_fastqc.html", sample=SAMPLES))
-        inputs.extend(expand(f"{get_step_dir('fastqc')}/{{sample}}_fastqc.zip", sample=SAMPLES))
-    return inputs
+    input_dir = config["input_fastq_dir"]
+    
+    # Define o padrão de busca. Ajuste conforme a nomenclatura dos seus arquivos.
+    # Exemplo: busca por arquivos terminados em _R1.fastq.gz ou _R2.fastq.gz
+    # O padrão '**' com recursive=True faz a busca em subpastas.
+    pattern = os.path.join(input_dir, "**", "*_R{1,2}.fastq.gz")
+    
+    # Busca todos os arquivos que correspondem ao padrão
+    fastq_files = glob.glob(pattern, recursive=True)
+    
+    # Extrai o nome da amostra de cada caminho de arquivo.
+    # A lógica de extração depende da nomenclatura dos seus arquivos.
+    # Exemplo: se o arquivo é /path/to/sampleA_R1.fastq.gz, a amostra é "sampleA".
+    samples = set()
+    for fq in fastq_files:
+        basename = os.path.basename(fq)
+        # Remove o sufixo _R1.fastq.gz ou _R2.fastq.gz para obter o nome da amostra
+        sample_name = basename.replace("_R1.fastq.gz", "").replace("_R2.fastq.gz", "")
+        if sample_name:
+            samples.add(sample_name)
+    
+    return sorted(list(samples))
