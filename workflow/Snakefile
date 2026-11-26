@@ -1,30 +1,38 @@
 # workflow/Snakefile
 
-import os
-from snakemake.io import glob_wildcards
+import pandas as pd
 
 configfile: "config/config.yaml"
 
-OUTDIR = config["outdir"]
-
-include: "rules/common.smk"
-include: "rules/fastp.smk"  # <-- Adicionado
-# ... (outros includes: basespace, fastqc, spades, etc.)
-
-# --- Lógica para a regra all ---
-# Como ainda estamos começando sem o BaseSpace, vamos assumir que as amostras
-# estão definidas em um samples.tsv (ou podemos ler do config).
-# Por enquanto, vamos usar o samples.tsv para ter uma lista estática.
-# Mais tarde, quando o BaseSpace for implementado, podemos mudar para checkpoint.
-
-import pandas as pd
 samples_df = pd.read_csv("config/samples.tsv", sep="\t")
 SAMPLES = samples_df["sample"].tolist()
 
+include: "rules/common.smk"
+include: "rules/fastp.smk"
+include: "rules/fastqc.smk"
+include: "rules/multiqc.smk"
+# ... (outros includes)
+
+# --- Build final targets based on config ---
+final_targets = []
+
+qc_mode = config["qc"]["mode"]
+
+# fastp
+if qc_mode in ("full", "fastp"):
+    final_targets.extend(expand(f"{get_step_dir('fastp')}/{{sample}}.html", sample=SAMPLES))
+    final_targets.extend(expand(f"{get_step_dir('fastp')}/{{sample}}.json", sample=SAMPLES))
+    final_targets.extend(expand(f"{get_step_dir('fastp')}/{{sample}}_R1.fastq.gz", sample=SAMPLES))
+
+# FastQC
+if qc_mode in ("full", "fastqc"):
+    final_targets.extend(expand(f"{get_step_dir('fastqc')}/{{sample}}_fastqc.html", sample=SAMPLES))
+
+# MultiQC (always, aggregates whatever ran)
+final_targets.append(f"{get_step_dir('multiqc')}/multiqc_report.html")
+
+# ... (adicionar alvos de assembly, etc., conforme forem implementados)
+
 rule all:
     input:
-        # Alvo padrão: executar o fastp para todas as amostras
-        expand(f"{OUTDIR}/02_fastp/{{sample}}.html", sample=SAMPLES),
-        expand(f"{OUTDIR}/02_fastp/{{sample}}.json", sample=SAMPLES)
-        # Quando adicionarmos outras etapas, podemos mudar o alvo para o
-        # resultado final (ex: Prokka), e o fastp será executado como dependência.
+        final_targets
