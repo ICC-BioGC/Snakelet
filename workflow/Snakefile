@@ -1,38 +1,48 @@
+# =============================================================================
 # workflow/Snakefile
+# Main entry point for the Snakelet pipeline.
+#
+# This version discovers samples by recursively searching a configured
+# input directory for FASTQ files. It no longer requires a static samples.tsv.
+# =============================================================================
 
-import pandas as pd
+import os
+import glob
 
+# --- Load configuration -----------------------------------------------------
 configfile: "config/config.yaml"
 
-samples_df = pd.read_csv("config/samples.tsv", sep="\t")
-SAMPLES = samples_df["sample"].tolist()
-
+# --- Include helper functions and rule modules ------------------------------
 include: "rules/common.smk"
 include: "rules/fastp.smk"
 include: "rules/fastqc.smk"
 include: "rules/multiqc.smk"
-# ... (outros includes)
+# ... (other includes will be added as modules are implemented)
 
-# --- Build final targets based on config ---
+# --- Discover samples recursively from the input directory ------------------
+# The function is defined in common.smk. It reads config["input_fastq_dir"]
+# and returns a sorted list of sample names found in FASTQ files.
+SAMPLES = discover_samples_from_dir()
+
+# --- Build final targets based on configuration -----------------------------
 final_targets = []
 
 qc_mode = config["qc"]["mode"]
 
-# fastp
+# fastp (trimming + reports)
 if qc_mode in ("full", "fastp"):
     final_targets.extend(expand(f"{get_step_dir('fastp')}/{{sample}}.html", sample=SAMPLES))
     final_targets.extend(expand(f"{get_step_dir('fastp')}/{{sample}}.json", sample=SAMPLES))
     final_targets.extend(expand(f"{get_step_dir('fastp')}/{{sample}}_R1.fastq.gz", sample=SAMPLES))
 
-# FastQC
+# FastQC (reports on trimmed or raw reads, depending on mode)
 if qc_mode in ("full", "fastqc"):
     final_targets.extend(expand(f"{get_step_dir('fastqc')}/{{sample}}_fastqc.html", sample=SAMPLES))
 
-# MultiQC (always, aggregates whatever ran)
+# MultiQC (always aggregates whatever QC ran)
 final_targets.append(f"{get_step_dir('multiqc')}/multiqc_report.html")
 
-# ... (adicionar alvos de assembly, etc., conforme forem implementados)
-
+# --- Final target rule ------------------------------------------------------
 rule all:
     input:
         final_targets
