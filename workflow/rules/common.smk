@@ -38,3 +38,31 @@ def discover_samples_from_dir(wildcards=None):
         )
 
     return sorted(samples)
+
+# workflow/rules/common.smk (continuação)
+
+def get_fastq(wildcards):
+    """
+    Return the list of FASTQ files (R1, R2) for a given sample.
+
+    Searches the configured input directory recursively for files
+    matching the sample name and the expected Illumina naming pattern.
+    """
+    input_dir = config["input_fastq_dir"]
+    sample = wildcards.sample
+
+    # Pattern to find R1 and R2 for this sample, anywhere under input_dir
+    pattern = os.path.join(input_dir, "**", f"{sample}_*_R{{1,2}}_001.fastq.gz")
+    matches = glob.glob(pattern, recursive=True)
+
+    # Separate R1 and R2
+    r1 = [f for f in matches if "_R1_001.fastq.gz" in f]
+    r2 = [f for f in matches if "_R2_001.fastq.gz" in f]
+
+    if len(r1) != 1 or len(r2) != 1:
+        raise ValueError(
+            f"Expected exactly one R1 and one R2 file for sample '{sample}', "
+            f"but found R1={r1}, R2={r2}."
+        )
+
+    return [r1[0], r2[0]]
