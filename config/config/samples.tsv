@@ -1,4 +1,0 @@
-sample	fastq_r1	fastq_r2
-sample_A	/path/to/sample_A_R1.fastq.gz	/path/to/sample_A_R2.fastq.gz
-sample_B	/path/to/sample_B_R1.fastq.gz	/path/to/sample_B_R2.fastq.gz
-sample_C	/path/to/sample_C_R1.fastq.gz	/path/to/sample_C_R2.fastq.gz
