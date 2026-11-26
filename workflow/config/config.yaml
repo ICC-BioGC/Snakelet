@@ -23,3 +23,9 @@ step_dirs:
   mob_suite: "11_plasmid/11_02_mob_suite"
   eggnog: "12_eggnog"
   fastani: "13_fastani"
+qc:
+  # Options:
+  #   "full"    -> fastp + fastqc + multiqc (default, recommended)
+  #   "fastp"   -> fastp + multiqc only (fastp report aggregated by MultiQC)
+  #   "fastqc"  -> fastqc + multiqc only (no trimming, QC on raw reads)
+  mode: "full"
