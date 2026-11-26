@@ -1,5 +1,5 @@
 cores: 8
-software-deployment-method: conda
+use-conda: true
 printshellcmds: true
 verbose: true
 rerun-incomplete: true
