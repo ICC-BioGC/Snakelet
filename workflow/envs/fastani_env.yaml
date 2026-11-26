@@ -1,3 +1,4 @@
+name: fastani_env
 channels:
   - conda-forge
   - bioconda
